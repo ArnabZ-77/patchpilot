@@ -15,7 +15,7 @@
     "bench": "tsx benchmark/run.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "ci": "npm run typecheck && npm test && node --test demo-app/tests/"
+    "ci": "npm run typecheck && npm test && npm --prefix demo-app test"
   },
   "dependencies": {
     "@cline/agents": "0.0.88",

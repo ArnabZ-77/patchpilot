@@ -1,4 +1,3 @@
-// @ts-check
 /**
  * PatchPilot error-capture middleware for Express (zero dependencies).
  *

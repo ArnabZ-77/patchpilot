@@ -10,8 +10,7 @@ const MAX_FAILURES = 6;
  * applied to test output: strip ANSI, keep failing test names + assertion
  * diffs, cap total size, report pass/fail counts).
  */
-export async function runTests(repo: RepoConfig, extraArgs: string[] = [], timeoutMs = 120_000): Promise<TestRun> {
-  const cwd = repo.subdir ? `${repo.root}/${repo.subdir}` : repo.root;
+export async function runTests(repo: RepoConfig, cwd: string, extraArgs: string[] = [], timeoutMs = 120_000): Promise<TestRun> {
   const [cmd, ...args] = [...repo.testCommand, ...extraArgs];
   const started = Date.now();
   const { stdout, stderr, exitCode, timedOut } = await execCapture(cmd!, args, cwd, timeoutMs);

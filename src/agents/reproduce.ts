@@ -7,6 +7,7 @@ import { makeReadFileTool, makeSearchTool, makeEditorTool } from "../pipeline/to
 import { makeBeforeTool, sha256 } from "../pipeline/guardrails.ts";
 import { runTests } from "../pipeline/testrunner.ts";
 import { extractJson } from "./util.ts";
+import { findMockFixture } from "../pipeline/mockFixtures.ts";
 
 const SYSTEM_PROMPT = `You are Reproducer, a test-first engineer. Your ONLY job is to write ONE new automated test that reproduces a reported bug.
 
@@ -62,7 +63,7 @@ Write the test, run it with run_test_file, confirm it fails with an assertion (n
     description: "Run the project's test command restricted to one test file and return a bounded summary of pass/fail output.",
     inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
     async execute({ path: p }: { path: string }) {
-      const run = await runTests(repo, testFileArgs(repo, p));
+      const run = await runTests(repo, cwd, testFileArgs(repo, p));
       return run.summary;
     },
   };
@@ -85,7 +86,7 @@ Write the test, run it with run_test_file, confirm it fails with an assertion (n
   if (!fs.existsSync(abs)) throw new Error(`Reproducer claimed to write "${parsed.test_file}" but it does not exist.`);
 
   // Verify independently: the test must fail on the unmodified tree (SWT-Bench F→P acceptance, checked server-side not just trusted from the agent).
-  const baseline = await runTests(repo, testFileArgs(repo, parsed.test_file));
+  const baseline = await runTests(repo, cwd, testFileArgs(repo, parsed.test_file));
   if (baseline.ok || baseline.failed === 0) {
     throw new Error(`Reproduction test "${parsed.test_file}" does not fail on the current code (expected a failing assertion). Output: ${baseline.summary.slice(0, 300)}`);
   }
@@ -117,23 +118,16 @@ function findSampleTest(cwd: string, repo: RepoConfig): { rel: string; content: 
 registerMockHandler({
   match: /MOCK_TAG:reproduce/,
   respond: async (prompt, opts) => {
-    // The mock still performs a real file write + real test run so the pipeline's
-    // independent verification step is genuinely exercised.
-    const editor = opts.tools?.find((t) => t.name === "editor");
+    // The mock still performs a real file write via the real editor tool, so
+    // the pipeline's independent "does this test actually fail?" verification
+    // step is genuinely exercised, not just trusted.
+    const found = findMockFixture(prompt);
+    if (!found) throw new Error("mock mode: no known fixture matched this reproduce prompt");
     const fileMatch = /### Allowed test directories\n([^\n]+)/.exec(prompt);
-    const dir = fileMatch?.[1]?.split(",")[0]?.trim() ?? "test";
-    const suspectMatch = /### Suspect location\n(\S+?)(?::(\S+))? \(lines (\d+)/.exec(prompt);
-    const srcFile = suspectMatch?.[1] ?? "src/app.ts";
-    const symbol = suspectMatch?.[2] ?? "handler";
-    const testFile = `${dir}/patchpilot.regression.test.ts`;
-    const testName = `${symbol} regression`;
-    const importPath = "../" + srcFile.replace(/^src\//, "src/").replace(/\.ts$/, "");
-    const body = `import { ${symbol} } from "${toImportSpecifier(importPath)}";\n\ntest("${testName}", () => {\n  expect(() => ${symbol}(undefined as any)).not.toThrow();\n});\n`;
-    if (editor) await editor.execute({ path: testFile, new_text: body }, {} as any);
-    return "```json\n" + JSON.stringify({ test_file: testFile, test_name: testName, failure_summary: `${symbol} throws instead of handling missing input` }) + "\n```";
+    const dir = fileMatch?.[1]?.split(",")[0]?.trim() ?? "tests";
+    const testFile = `${dir}/patchpilot.regression.test.js`;
+    const editor = opts.tools?.find((t) => t.name === "editor");
+    if (editor) await editor.execute({ path: testFile, new_text: found.fixture.test.body }, {} as any);
+    return "```json\n" + JSON.stringify({ test_file: testFile, test_name: found.fixture.test.name, failure_summary: found.fixture.rootCause }) + "\n```";
   },
 });
-
-function toImportSpecifier(p: string): string {
-  return p.startsWith(".") ? p : "./" + p;
-}

@@ -9,6 +9,7 @@ import { runTests } from "../pipeline/testrunner.ts";
 import { runHardChecks, allPass, braceBalanceOk } from "../pipeline/hardchecks.ts";
 import { diffStat, revertAll } from "../pipeline/sandbox.ts";
 import { extractJson } from "./util.ts";
+import { findMockFixture } from "../pipeline/mockFixtures.ts";
 
 // Prompt D from the ImpossibleBench ablation (arXiv 2510.20270): the strict
 // wording that cuts cheating from >85% to ~1% in their study. Combined with
@@ -87,7 +88,7 @@ This is attempt ${attemptNumber} of up to ${3}. Fix the source, run run_repro_te
     description: "Run just the reproduction test file and return a bounded pass/fail summary.",
     inputSchema: { type: "object", properties: {} },
     async execute() {
-      const run = await runTests(repo, [repro.test_file]);
+      const run = await runTests(repo, cwd, [repro.test_file]);
       return run.summary;
     },
   };
@@ -108,7 +109,7 @@ This is attempt ${attemptNumber} of up to ${3}. Fix the source, run run_repro_te
     const nowHash = sha256(fs.readFileSync(testAbsPath, "utf8"));
     if (nowHash !== repro.lockHash) {
       await revertAll(cwd);
-      return finishAttempt(attemptNumber, "(reverted)", "rejected", "The reproduction test file was modified despite the guardrail; the attempt was discarded and the sandbox reverted.", [], "", []);
+      return Object.assign(finishAttempt(attemptNumber, "(reverted)", "rejected", "The reproduction test file was modified despite the guardrail; the attempt was discarded and the sandbox reverted.", [], "", []), { usage: result.usage });
     }
   }
 
@@ -131,7 +132,7 @@ This is attempt ${attemptNumber} of up to ${3}. Fix the source, run run_repro_te
     return Object.assign(finishAttempt(attemptNumber, parsed?.hypothesis ?? "", "rejected", `Hard checks failed: ${reason}`, stat.files, stat.diff, hardChecks), { usage: result.usage });
   }
 
-  const reproRun = await runTests(repo, [repro.test_file]);
+  const reproRun = await runTests(repo, cwd, [repro.test_file]);
   if (!reproRun.ok) {
     return Object.assign(
       finishAttempt(attemptNumber, parsed?.hypothesis ?? "", "rejected", `Reproduction test still fails:\n${reproRun.summary}`, stat.files, stat.diff, hardChecks, reproRun),
@@ -139,7 +140,7 @@ This is attempt ${attemptNumber} of up to ${3}. Fix the source, run run_repro_te
     );
   }
 
-  const fullRun = await runTests(repo);
+  const fullRun = await runTests(repo, cwd);
   if (!fullRun.ok) {
     return Object.assign(
       finishAttempt(attemptNumber, parsed?.hypothesis ?? "", "rejected", `Full suite regressed:\n${fullRun.summary}`, stat.files, stat.diff, hardChecks, reproRun, fullRun),
@@ -168,23 +169,16 @@ function finishAttempt(
   return { attempt, hypothesis, summary: summary ?? "", filesChanged, diff, reproTest, fullSuite, hardChecks, outcome, rejectionReason };
 }
 
-// --- deterministic mock: applies the "real" fix for the demo app's planted bugs by pattern-matching the hypothesis context ---
+// --- deterministic mock: applies the exact, hand-verified patch for the matched planted bug ---
 registerMockHandler({
   match: /MOCK_TAG:fix/,
   respond: async (prompt, opts) => {
+    const found = findMockFixture(prompt);
+    if (!found) throw new Error("mock mode: no known fixture matched this fix prompt");
     const editor = opts.tools?.find((t) => t.name === "editor");
     const runRepro = opts.tools?.find((t) => t.name === "run_repro_test");
-    const suspectMatch = /- (\S+?)(?::(\S+))? \(lines (\d+)-(\d+)\)/.exec(prompt);
-    const file = suspectMatch?.[1];
-    const symbol = suspectMatch?.[2];
-    if (file && editor) {
-      try {
-        const content = (await (editor as any).execute?.({ path: file, new_text: "" }, {} as any)) as string;
-      } catch {
-        /* reading via editor isn't supported; mock patch applied via direct heuristic below is skipped if file unknown */
-      }
-    }
+    if (editor) await editor.execute({ path: found.file, old_text: found.fixture.patch.old_text, new_text: found.fixture.patch.new_text }, {} as any);
     if (runRepro) await runRepro.execute({}, {} as any);
-    return "```json\n" + JSON.stringify({ hypothesis: "Guard the argument before use and return a safe default.", summary: "Added a null/undefined guard so the function no longer throws on missing input.", done: true }) + "\n```";
+    return "```json\n" + JSON.stringify({ hypothesis: found.fixture.rootCause, summary: `Fixed ${found.file}: ${found.fixture.intendedBehavior}`, done: true }) + "\n```";
   },
 });

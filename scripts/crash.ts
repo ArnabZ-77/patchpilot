@@ -9,14 +9,24 @@
  */
 import { BUGS } from "../benchmark/golden/bugs.js";
 
+interface Bug {
+  id: string;
+  category: string;
+  file: string;
+  golden: string;
+  source: "crash" | "manual";
+  description?: string;
+  request?: { method: string; path: string; body?: unknown; query?: Record<string, string> };
+}
+
 const DEMO_URL = process.env.DEMO_URL || "http://localhost:5050";
 const PATCHPILOT_URL = process.env.PATCHPILOT_URL || "http://localhost:4747";
 
-async function fire(bug: (typeof BUGS)[number]): Promise<void> {
+async function fire(bug: Bug): Promise<void> {
   if (bug.source === "crash") {
     const req = bug.request!;
     const url = new URL(req.path, DEMO_URL);
-    if (req.query) for (const [k, v] of Object.entries(req.query)) url.searchParams.set(k, v);
+    if (req.query) for (const [k, v] of Object.entries(req.query)) url.searchParams.set(k, String(v));
     const res = await fetch(url, {
       method: req.method,
       headers: req.body ? { "content-type": "application/json" } : undefined,
@@ -29,14 +39,15 @@ async function fire(bug: (typeof BUGS)[number]): Promise<void> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ repo: "demo-app", title: bug.id, description: bug.description, suspectFile: bug.file }),
     });
-    const json = await res.json();
+    const json = (await res.json()) as { incidentId?: string };
     console.log(`[${bug.id}] manual report -> ${res.status} incident ${json.incidentId ?? "?"}`);
   }
 }
 
 async function main(): Promise<void> {
   const only = process.argv[2];
-  const bugs = only ? BUGS.filter((b) => b.id.startsWith(only)) : BUGS;
+  const allBugs = BUGS as Bug[];
+  const bugs: Bug[] = only ? allBugs.filter((b) => b.id.startsWith(only)) : allBugs;
   if (!bugs.length) {
     console.error(`No bug matches "${only}". Known ids: ${BUGS.map((b) => b.id).join(", ")}`);
     process.exit(1);

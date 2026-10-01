@@ -6,7 +6,7 @@
     "demo-app": {
       "root": ".",
       "subdir": "demo-app",
-      "testCommand": ["node", "--test", "tests/"],
+      "testCommand": ["node", "--test"],
       "testPaths": ["tests"],
       "protectedPaths": ["server.js", "package.json", "package-lock.json", ".env", ".env.*"],
       "maxDiffLines": 150,

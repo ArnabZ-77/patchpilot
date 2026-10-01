@@ -10,6 +10,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { loadConfig, PROJECT_ROOT } from "../src/config.ts";
 import { IncidentStore } from "../src/store.ts";
 import { createIncident, manualEvent } from "../src/capture/incident.ts";
@@ -39,13 +40,14 @@ async function syntheticEvent(bug: (typeof BUGS)[number]): Promise<IncidentEvent
   }
   // Crash bugs: actually invoke the buggy function in-process to capture a real stack trace,
   // exactly as the Express middleware would — no server needs to be running for the benchmark.
-  const mod = await import(path.join(repo.root, repo.subdir ?? "", bug.file));
+  const appRoot = path.join(repo.root, repo.subdir ?? "");
+  const mod = await import(pathToFileURL(path.join(appRoot, bug.file)).href);
   try {
     callBuggy(bug.id, mod);
     throw new Error(`expected ${bug.id} to throw but it did not — bug may already be fixed in the working tree`);
   } catch (err) {
-    const { buildEvent } = await import("../sdk/patchpilot-express.js");
-    return buildEvent(err, undefined, { repo: "demo-app", root: path.join(repo.root, repo.subdir ?? "") });
+    const { buildEvent } = await import(pathToFileURL(path.join(PROJECT_ROOT, "sdk", "patchpilot-express.js")).href);
+    return buildEvent(err, undefined, { repo: "demo-app", root: appRoot }) as unknown as IncidentEvent;
   }
 }
 

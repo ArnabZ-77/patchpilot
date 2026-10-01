@@ -17,7 +17,7 @@ export function makeReadFileTool(cwd: string): AgentTool<{ path: string; start_l
       properties: { path: { type: "string" }, start_line: { type: "integer" }, end_line: { type: "integer" } },
       required: ["path"],
     },
-    async execute({ path: relPath, start_line, end_line }) {
+    async execute({ path: relPath, start_line, end_line }: { path: string; start_line?: number; end_line?: number }) {
       const abs = safeResolve(cwd, relPath);
       const content = fs.readFileSync(abs, "utf8");
       const lines = content.split(/\r?\n/);
@@ -36,10 +36,10 @@ export function makeSearchTool(cwd: string): AgentTool<{ queries: string[] }, st
     name: "search_codebase",
     description: "Regex search across the repo (excludes node_modules/.git). Up to 5 queries per call. Each query returns at most 50 matches; file content, not just names.",
     inputSchema: { type: "object", properties: { queries: { type: "array", items: { type: "string" } } }, required: ["queries"] },
-    async execute({ queries }) {
+    async execute({ queries }: { queries: string[] }) {
       return queries
         .slice(0, 5)
-        .map((q) => `### ${q}\n${searchOne(cwd, q)}`)
+        .map((q: string) => `### ${q}\n${searchOne(cwd, q)}`)
         .join("\n\n");
     },
   };
@@ -104,7 +104,7 @@ export function makeEditorTool(cwd: string): AgentTool<{ path: string; old_text?
       },
       required: ["path", "new_text"],
     },
-    async execute({ path: relPath, old_text, new_text, insert_line }) {
+    async execute({ path: relPath, old_text, new_text, insert_line }: { path: string; old_text?: string | null; new_text: string; insert_line?: number | null }) {
       const abs = safeResolve(cwd, relPath);
       if (!fs.existsSync(abs)) {
         if (old_text) throw new Error(`File "${relPath}" does not exist; omit old_text to create it.`);

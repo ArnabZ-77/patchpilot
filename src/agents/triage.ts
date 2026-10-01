@@ -6,6 +6,7 @@ import { makeReadFileTool, makeSearchTool } from "../pipeline/tools.ts";
 import { makeBeforeTool } from "../pipeline/guardrails.ts";
 import { rankSuspectsFromFrames, repoTree } from "./localize.ts";
 import { extractJson } from "./util.ts";
+import { findMockFixture } from "../pipeline/mockFixtures.ts";
 
 const SYSTEM_PROMPT = `You are Triage, a careful software maintainer investigating a production crash.
 You are read-only: you may read files and search the codebase, but you may never write or run commands.
@@ -89,18 +90,18 @@ function clamp01(n: number): number {
 registerMockHandler({
   match: /MOCK_TAG:triage/,
   respond: (prompt) => {
-    const firstSuspect = /- (\S+?)(?::(\S+))? \(lines (\d+)-(\d+)/.exec(prompt);
-    const file = firstSuspect?.[1] ?? "src/app.ts";
-    const symbol = firstSuspect?.[2];
-    const start = Number(firstSuspect?.[3] ?? 1);
-    const end = Number(firstSuspect?.[4] ?? start + 5);
+    const found = findMockFixture(prompt);
+    if (!found) {
+      return "```json\n" + JSON.stringify({ root_cause: "", intended_behavior: "", suspects: [], confidence: 0.1, needs_human: "mock mode: no known fixture matched this prompt" }) + "\n```";
+    }
+    const { file, fixture } = found;
     return "```json\n" +
       JSON.stringify(
         {
-          root_cause: `${symbol ?? "the handler"} does not guard against a missing/undefined value before using it.`,
-          intended_behavior: "Validate input before use and respond predictably instead of throwing.",
-          suspects: [{ file, symbol, startLine: start, endLine: end, score: 0.9, evidence: ["stack_frame", "llm"], reason: "confirmed by reading the function" }],
-          confidence: 0.82,
+          root_cause: fixture.rootCause,
+          intended_behavior: fixture.intendedBehavior,
+          suspects: [{ file, symbol: fixture.symbol, startLine: 1, endLine: 20, score: 0.9, evidence: ["stack_frame", "llm"], reason: "confirmed by reading the function" }],
+          confidence: 0.85,
           needs_human: null,
         },
         null,
