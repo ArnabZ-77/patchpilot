@@ -1,0 +1,5 @@
+# Force LF everywhere, regardless of core.autocrlf. Sandboxed git worktrees
+# are inspected byte-for-byte by the Fixer's exact-match editor tool, so a
+# platform-dependent line ending would make a correct patch fail to apply
+# on Windows checkouts.
+* text=auto eol=lf

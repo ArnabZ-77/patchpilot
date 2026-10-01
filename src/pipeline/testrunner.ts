@@ -63,8 +63,11 @@ export function parseJestLikeOutput(raw: string): { passed: number; failed: numb
   let passed = 0;
   let failed = 0;
 
-  const nodeTestPass = raw.match(/^#\s*pass\s+(\d+)/m);
-  const nodeTestFail = raw.match(/^#\s*fail\s+(\d+)/m);
+  // node:test's "tap" reporter prints "# pass N"; its default "spec" reporter
+  // (used when stdout isn't a TTY in some Node versions) prints "ℹ pass N"
+  // instead — accept either leading symbol.
+  const nodeTestPass = raw.match(/^[#ℹ]\s*pass\s+(\d+)/m);
+  const nodeTestFail = raw.match(/^[#ℹ]\s*fail\s+(\d+)/m);
   const jestSummary = raw.match(/Tests?:\s*(?:(\d+)\s*failed,\s*)?(?:(\d+)\s*skipped,\s*)?(\d+)\s*passed,\s*(\d+)\s*total/i);
 
   if (nodeTestPass || nodeTestFail) {
@@ -74,18 +77,18 @@ export function parseJestLikeOutput(raw: string): { passed: number; failed: numb
     failed = Number(jestSummary[1] ?? 0);
     passed = Number(jestSummary[3] ?? 0);
   } else {
-    const passMatches = raw.match(/✓|√|PASS\b|passing\b/g);
-    const failMatches = raw.match(/✗|✕|×|FAIL\b|failing\b|not ok \d/g);
+    const passMatches = raw.match(/✓|✔|√|PASS\b|passing\b/g);
+    const failMatches = raw.match(/✗|✕|✖|×|FAIL\b|failing\b|not ok \d/g);
     passed = passMatches?.length ?? 0;
     failed = failMatches?.length ?? 0;
   }
 
   const failures: Array<{ name: string; message: string }> = [];
   // Jest/Vitest-style "✕ test name" blocks.
-  for (const b of raw.split(/\n(?=\s*(?:✕|✗|×)\s)/).slice(1)) {
+  for (const b of raw.split(/\n(?=\s*(?:✕|✗|✖|×)\s)/).slice(1)) {
     const nameLine = b.split("\n")[0]?.trim() ?? "unknown test";
     const body = b.split("\n").slice(1, 12).join("\n").trim();
-    failures.push({ name: nameLine.replace(/^(✕|✗|×)\s*/, ""), message: body.slice(0, 600) });
+    failures.push({ name: nameLine.replace(/^(✕|✗|✖|×)\s*/, ""), message: body.slice(0, 600) });
   }
   // node:test TAP-style "not ok N - name" blocks, body indented until the next "ok"/"not ok"/"#".
   if (failures.length === 0) {
@@ -104,7 +107,7 @@ export function parseJestLikeOutput(raw: string): { passed: number; failed: numb
 function buildSummary(raw: string, passed: number, failed: number, timedOut: boolean, exitCode: number | null): string {
   let head = `${passed} passed / ${failed} failed (exit ${exitCode}${timedOut ? ", TIMED OUT" : ""})\n\n`;
   const lines = raw.split("\n");
-  const relevant = lines.filter((l) => /(fail|error|✕|✗|×|expect|assert|at .*\(.*:\d+:\d+\))/i.test(l) && !/node_modules/.test(l));
+  const relevant = lines.filter((l) => /(fail|error|✕|✗|✖|×|expect|assert|at .*\(.*:\d+:\d+\))/i.test(l) && !/node_modules/.test(l));
   let body = (relevant.length ? relevant : lines.slice(-80)).join("\n");
   if (head.length + body.length > MAX_SUMMARY_CHARS) body = body.slice(0, MAX_SUMMARY_CHARS - head.length) + "\n… (truncated)";
   return head + body;

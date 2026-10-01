@@ -16,7 +16,10 @@ export async function createSandbox(repo: RepoConfig, incidentId: string): Promi
   if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
   const branch = `patchpilot/${incidentId}`;
   const baseRef = repo.baseRef ?? "HEAD";
-  await git(repo.root, ["worktree", "add", "-f", "-B", branch, dir, baseRef]);
+  // Force LF checkout regardless of the host's global core.autocrlf — a
+  // platform-dependent line ending would make the Fixer's byte-exact
+  // old_text match fail unpredictably across machines.
+  await git(repo.root, ["-c", "core.autocrlf=false", "-c", "core.eol=lf", "worktree", "add", "-f", "-B", branch, dir, baseRef]);
   const cwd = repo.subdir ? path.join(dir, repo.subdir) : dir;
   return { dir, cwd, branch };
 }

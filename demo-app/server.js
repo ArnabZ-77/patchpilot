@@ -1,5 +1,5 @@
 import express from "express";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { patchpilot } from "../sdk/patchpilot-express.js";
 import { computeTotal } from "./src/lib/total.js";
 import { getUserCity } from "./src/lib/profile.js";
@@ -52,7 +52,7 @@ app.use(
 // Final handler so the client still gets a 500 instead of a hung connection.
 app.use((err, _req, res, _next) => res.status(500).json({ error: err.message }));
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   app.listen(PORT, () => console.log(`[demo-app] listening on http://localhost:${PORT}`));
 }
 
