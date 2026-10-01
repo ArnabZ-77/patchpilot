@@ -1,0 +1,14 @@
+{
+  "name": "patchpilot-demo-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tiny Express app with 10 planted bugs, used as PatchPilot's live demo and mini-benchmark target.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

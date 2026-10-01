@@ -1,0 +1,35 @@
+{
+  "name": "patchpilot",
+  "version": "0.1.0",
+  "description": "Turn a production crash into a tested pull request. Three guardrailed sub-agents (Triage, Reproducer, Fixer) on the Cline SDK.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "demo": "node demo-app/server.js",
+    "demo:crash": "tsx scripts/crash.ts",
+    "bench": "tsx benchmark/run.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "ci": "npm run typecheck && npm test && node --test demo-app/tests/"
+  },
+  "dependencies": {
+    "@cline/agents": "0.0.88",
+    "@cline/core": "0.0.88",
+    "@cline/sdk": "0.0.88",
+    "@cline/shared": "0.0.88",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
