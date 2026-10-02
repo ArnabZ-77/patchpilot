@@ -85,9 +85,15 @@ export async function processIncident(inc: Incident, repo: RepoConfig, config: P
     const title = buildPrTitle(inc, triage);
     const body = buildPrBody(inc, triage, accepted, review);
     let url: string | undefined;
-    if (OPEN_PR) url = await openDraftPr(sandbox.dir, sandbox.branch, title, body);
+    let prError: string | undefined;
+    if (OPEN_PR) ({ url, error: prError } = await openDraftPr(sandbox.dir, sandbox.branch, title, body));
     inc.pr = { branch: sandbox.branch, title, body, url, commit, diff: accepted.diff };
-    store.log(inc, "pr-ready", url ? `Draft PR opened: ${url}` : `Patch committed on branch ${sandbox.branch} (gh PR creation skipped/unavailable)`, inc.pr);
+    const prNote = url
+      ? `Draft PR opened: ${url}`
+      : OPEN_PR
+        ? `Patch committed on branch ${sandbox.branch}, but opening the PR failed: ${prError}`
+        : `Patch committed on branch ${sandbox.branch} (PR creation off; set PATCHPILOT_OPEN_PR=1)`;
+    store.log(inc, "pr-ready", prNote, inc.pr);
 
     finish(inc, store, "done");
   } catch (err) {

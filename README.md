@@ -23,7 +23,7 @@ test, and a destructive shell command is blocked before it runs — see
 ```bash
 npm install
 cp .env.example .env        # paste a Gemini or Anthropic key, or use PATCHPILOT_MOCK=1 to try it free
-npm run typecheck && npm test   # 29 unit tests, no API key needed
+npm run typecheck && npm test   # 37 unit tests, no API key needed
 ```
 
 ### 1. Try it with zero API cost (mock mode)
@@ -50,6 +50,27 @@ PATCHPILOT_MOCK=1 npm run demo:crash # fires all 10 planted bugs
 Open **http://localhost:4747** — the dashboard streams each incident live via SSE:
 stage progress, the Triage root cause, the Reproducer's failing test, every Fixer
 attempt with its hard-check results, the Critic's review, and the final diff.
+
+### 3. Live demo with a real GitHub pull request
+
+The demo shop also lives in its own repo,
+[patchpilot-demo-shop](https://github.com/ArnabZ-77/patchpilot-demo-shop), so PRs land in
+the "customer's" repo, not in PatchPilot's. Clone it next to this folder
+(`../demo-shop`), make sure `gh auth status` is logged in, then:
+
+```powershell
+# terminal 1: PatchPilot, opening real draft PRs
+$env:PATCHPILOT_OPEN_PR="1"; npm start
+# terminal 2: the standalone shop (configured as repo "demo-shop")
+npm run demo:shop
+# terminal 3: crash it
+npm run demo:crash 01
+```
+
+A draft PR appears in the shop repo with two commits (the failing test, then the fix).
+Example: [patchpilot-demo-shop#1](https://github.com/ArnabZ-77/patchpilot-demo-shop/pull/1).
+For bug reports rather than crashes, set `$env:DEMO_REPO="demo-shop"` before
+`npm run demo:crash`.
 
 Drop `PATCHPILOT_MOCK=1` and put a real key in `.env` to run it for real. `.env.example`
 defaults to Gemini (`GEMINI_API_KEY`); Anthropic and OpenAI-compatible setups are listed
@@ -134,7 +155,14 @@ tests/                      PatchPilot's own unit tests (vitest)
 | Secrets/config/migrations edited | Protected-path list, enforced the same way as the test-file lock | `patchpilot.config.json` |
 | Agent wanders indefinitely | Hard iteration caps per stage, ≤3 fix attempts, then honest escalation | `src/pipeline/orchestrator.ts` |
 
-Every block is logged to `incident.guardrailBlocks` and shown on the dashboard.
+Every block is logged to `incident.guardrailBlocks` and shown on the dashboard. Bug #11 in
+the benchmark is a deliberately contradictory request, so a block happens on demand: the
+Fixer tries to rewrite an existing test, is refused, and the incident ends at Needs Human.
+
+**The same policy guards the team's own Cline.** `.clinerules/hooks/PreToolUse.js` is a
+Cline file hook. Open this folder as the Cline workspace and it blocks writes to `.env`,
+edits to the hidden benchmark tests, test deletion, and destructive git commands
+(`tests/dev-hook.test.ts`).
 
 ## Evaluation
 

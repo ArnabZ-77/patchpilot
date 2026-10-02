@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { FixAttempt, Incident, ReviewResult, TriageResult } from "../types.ts";
 import { formatInr } from "./cost.ts";
 
@@ -60,20 +63,25 @@ export function buildPrTitle(inc: Incident, triage: TriageResult): string {
  * GitHub remote. Returns undefined (not an error) when `gh` or a remote is
  * unavailable — PR creation is optional, the patch and branch always exist.
  */
-export async function openDraftPr(repoRoot: string, branch: string, title: string, body: string): Promise<string | undefined> {
+export async function openDraftPr(repoRoot: string, branch: string, title: string, body: string): Promise<{ url?: string; error?: string }> {
+  // Body goes through a file: it's multi-line Markdown full of quotes and | > characters.
+  const bodyFile = path.join(os.tmpdir(), `patchpilot-pr-${branch.replace(/[^\w-]/g, "_")}.md`);
   try {
+    fs.writeFileSync(bodyFile, body, "utf8");
     await run("git", ["push", "-u", "origin", branch], repoRoot);
-    const out = await run("gh", ["pr", "create", "--draft", "--title", title, "--body", body, "--head", branch], repoRoot);
-    const urlMatch = out.match(/https:\/\/\S+/);
-    return urlMatch?.[0];
-  } catch {
-    return undefined;
+    const out = await run("gh", ["pr", "create", "--draft", "--title", title, "--body-file", bodyFile, "--head", branch], repoRoot);
+    return { url: out.match(/https:\/\/\S+/)?.[0] };
+  } catch (err) {
+    return { error: (err instanceof Error ? err.message : String(err)).slice(0, 500) };
+  } finally {
+    fs.rmSync(bodyFile, { force: true });
   }
 }
 
+/** No shell: git and gh are real executables, and a shell would mangle arguments containing quotes or newlines. */
 function run(cmd: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { cwd, shell: process.platform === "win32" });
+    const child = spawn(cmd, args, { cwd });
     let out = "";
     let err = "";
     child.stdout.on("data", (d) => (out += d));

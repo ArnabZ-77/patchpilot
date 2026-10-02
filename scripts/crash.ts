@@ -21,6 +21,8 @@ interface Bug {
 
 const DEMO_URL = process.env.DEMO_URL || "http://localhost:5050";
 const PATCHPILOT_URL = process.env.PATCHPILOT_URL || "http://localhost:4747";
+/** Which configured repo bug reports go to. Crashes carry their own repo tag from the server that crashed. */
+const DEMO_REPO = process.env.DEMO_REPO || "demo-app";
 
 async function fire(bug: Bug): Promise<void> {
   if (bug.source === "crash") {
@@ -37,7 +39,7 @@ async function fire(bug: Bug): Promise<void> {
     const res = await fetch(new URL("/api/incidents/manual", PATCHPILOT_URL), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ repo: "demo-app", title: bug.id, description: bug.description, suspectFile: bug.file }),
+      body: JSON.stringify({ repo: DEMO_REPO, title: bug.id, description: bug.description, suspectFile: bug.file }),
     });
     const json = (await res.json()) as { incidentId?: string };
     console.log(`[${bug.id}] manual report -> ${res.status} incident ${json.incidentId ?? "?"}`);

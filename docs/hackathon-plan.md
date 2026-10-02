@@ -257,10 +257,10 @@ drop one level.**
 - [ ] Cline installed and signed in on every laptop; task log started
 - [ ] One real-model run completed and its cost recorded
 - [ ] Docker yes/no decided
-- [ ] Bug #11 written and a live block seen at least once
-- [ ] Dev Cline hook blocks a `.env`/test edit, with a screenshot
+- [x] Bug #11 written and a live block seen (mock mode; still to see on a real model)
+- [x] Dev Cline hook written and tested (`.clinerules/hooks/PreToolUse.js`). **Screenshot still to take in your Cline.**
 - [ ] Memory Bank, `.clinerules` and Kanban cards ready
-- [ ] Real draft PR opened on the demo repo
+- [x] Real draft PR opened on the demo repo ([demo-shop#1](https://github.com/ArnabZ-77/patchpilot-demo-shop/pull/1))
 - [ ] Deck fixes applied
 - [ ] Backup video recorded and saved in two places
 - [ ] Social post drafted
