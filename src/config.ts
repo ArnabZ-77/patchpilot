@@ -80,7 +80,8 @@ export function resolveModelSettings(): ModelSettings {
   const apiKey =
     process.env.PATCHPILOT_API_KEY ||
     (providerId === "anthropic" ? process.env.ANTHROPIC_API_KEY : undefined) ||
-    (providerId.startsWith("openai") ? process.env.OPENAI_API_KEY : undefined);
+    (providerId.startsWith("openai") ? process.env.OPENAI_API_KEY : undefined) ||
+    (providerId === "gemini" ? process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY : undefined);
   return { providerId, modelId, apiKey, baseUrl: process.env.PATCHPILOT_BASE_URL || undefined };
 }
 

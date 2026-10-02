@@ -23,8 +23,31 @@ export interface TokenUsage {
   totalCost?: number;
 }
 
+/** Prices read from the @cline/llms model catalog, keyed by model id. Covers non-Claude providers (Gemini, OpenAI, ...). */
+const CATALOG_PRICES = new Map<string, [number, number, number, number]>();
+
+export async function loadCatalogPricing(providerId: string, modelId: string): Promise<void> {
+  if (CATALOG_PRICES.has(modelId)) return;
+  try {
+    const { getModelsForProvider } = await import("@cline/llms");
+    const models = (await getModelsForProvider(providerId)) as unknown;
+    const list = (Array.isArray(models) ? models : Object.values(models as Record<string, unknown>)) as Array<{ id?: string; pricing?: Record<string, number> }>;
+    const p = list.find((m) => m.id === modelId)?.pricing;
+    if (p && typeof p.input === "number" && typeof p.output === "number") {
+      CATALOG_PRICES.set(modelId, [p.input, p.output, p.cacheRead ?? 0, p.cacheWrite ?? 0]);
+    }
+  } catch {
+    /* catalog unavailable: fall back to the static table */
+  }
+}
+
 export function usdFor(modelId: string, u: TokenUsage): number {
   if (typeof u.totalCost === "number" && u.totalCost > 0) return u.totalCost;
+  const catalog = CATALOG_PRICES.get(modelId);
+  if (catalog) {
+    const [inp, out, cr, cw] = catalog;
+    return (u.inputTokens * inp + u.outputTokens * out + u.cacheReadTokens * cr + u.cacheWriteTokens * cw) / 1e6;
+  }
   const key = Object.keys(PRICES).find((k) => modelId.startsWith(k));
   const [inp, out, cr, cw] = key ? PRICES[key]! : [3, 15, 0.3, 3.75];
   return (u.inputTokens * inp + u.outputTokens * out + u.cacheReadTokens * cr + u.cacheWriteTokens * cw) / 1e6;

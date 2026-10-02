@@ -5,13 +5,13 @@
  * resulting sandbox independently, mirroring SWE-bench's FAIL_TO_PASS
  * grading.
  *
- * Usage: npm run bench            (uses PATCHPILOT_MOCK=1 unless an API key is set)
+ * Usage: npm run bench            (real model from .env; set PATCHPILOT_MOCK=1 for zero-cost fixtures)
  */
 import path from "node:path";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { loadConfig, PROJECT_ROOT } from "../src/config.ts";
+import { loadConfig, PROJECT_ROOT, resolveModelSettings } from "../src/config.ts";
 import { IncidentStore } from "../src/store.ts";
 import { createIncident, manualEvent } from "../src/capture/incident.ts";
 import { processIncident } from "../src/pipeline/orchestrator.ts";
@@ -100,9 +100,13 @@ async function runGoldenTest(sandboxCwd: string, goldenFile: string): Promise<bo
 }
 
 async function main(): Promise<void> {
-  if (!process.env.PATCHPILOT_MOCK && !process.env.ANTHROPIC_API_KEY && !process.env.PATCHPILOT_API_KEY) {
-    console.log("No API key found — running in PATCHPILOT_MOCK=1 mode. Set ANTHROPIC_API_KEY to benchmark a real model.\n");
-    process.env.PATCHPILOT_MOCK = "1";
+  if (process.env.PATCHPILOT_MOCK !== "1") {
+    const s = resolveModelSettings();
+    if (!s.apiKey || /paste-your|sk-ant-\.\.\./.test(s.apiKey)) {
+      console.error(`No API key found for provider "${s.providerId}". Put your key in .env (see .env.example), or run with PATCHPILOT_MOCK=1.`);
+      process.exit(1);
+    }
+    console.log(`Running against a real model: ${s.providerId} / ${s.modelId}\n`);
   }
 
   const rows: Row[] = [];

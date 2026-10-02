@@ -2,7 +2,7 @@ import type { Incident, PatchPilotConfig, RepoConfig } from "../types.ts";
 import type { IncidentStore } from "../store.ts";
 import { resolveModelSettings } from "../config.ts";
 import { createSandbox } from "./sandbox.ts";
-import { addUsage } from "./cost.ts";
+import { addUsage, loadCatalogPricing } from "./cost.ts";
 import { runTriage } from "../agents/triage.ts";
 import { runReproduce } from "../agents/reproduce.ts";
 import { runFixAttempt } from "../agents/fix.ts";
@@ -18,6 +18,7 @@ import { commitAll } from "./sandbox.ts";
  */
 export async function processIncident(inc: Incident, repo: RepoConfig, config: PatchPilotConfig, store: IncidentStore): Promise<void> {
   const settings = resolveModelSettings();
+  await loadCatalogPricing(settings.providerId, settings.modelId);
   inc.startedAt = new Date().toISOString();
   store.persist(inc);
 

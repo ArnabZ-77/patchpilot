@@ -22,7 +22,7 @@ test, and a destructive shell command is blocked before it runs — see
 
 ```bash
 npm install
-cp .env.example .env        # add ANTHROPIC_API_KEY, or leave PATCHPILOT_MOCK=1 to try it free
+cp .env.example .env        # paste a Gemini or Anthropic key, or use PATCHPILOT_MOCK=1 to try it free
 npm run typecheck && npm test   # 29 unit tests, no API key needed
 ```
 
@@ -51,7 +51,9 @@ Open **http://localhost:4747** — the dashboard streams each incident live via 
 stage progress, the Triage root cause, the Reproducer's failing test, every Fixer
 attempt with its hard-check results, the Critic's review, and the final diff.
 
-Drop `PATCHPILOT_MOCK=1` and set `ANTHROPIC_API_KEY` in `.env` to run it for real.
+Drop `PATCHPILOT_MOCK=1` and put a real key in `.env` to run it for real. `.env.example`
+defaults to Gemini (`GEMINI_API_KEY`); Anthropic and OpenAI-compatible setups are listed
+there too.
 
 ## How it works
 
