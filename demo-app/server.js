@@ -53,7 +53,14 @@ app.use(
 app.use((err, _req, res, _next) => res.status(500).json({ error: err.message }));
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  app.listen(PORT, () => console.log(`[demo-app] listening on http://localhost:${PORT}`));
+  // Express 5 passes listen errors (e.g. port already in use) to this callback.
+  app.listen(PORT, (err) => {
+    if (err) {
+      console.error(`[demo-app] could not start on port ${PORT}: ${err.code ?? err.message}. Is another server already running there?`);
+      process.exit(1);
+    }
+    console.log(`[demo-app] listening on http://localhost:${PORT}`);
+  });
 }
 
 export default app;

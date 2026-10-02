@@ -21,7 +21,7 @@
       "protectedPaths": ["server.js", "package.json", "package-lock.json", "sdk/**", ".env", ".env.*"],
       "maxDiffLines": 150,
       "maxDiffFiles": 3,
-      "baseRef": "HEAD"
+      "baseRef": "main"
     }
   }
 }

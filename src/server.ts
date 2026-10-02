@@ -106,7 +106,12 @@ app.get("/api/stream", (req, res) => {
 const dashboardDir = path.join(PROJECT_ROOT, "dashboard");
 if (fs.existsSync(dashboardDir)) app.use(express.static(dashboardDir));
 
-app.listen(PORT, () => {
+// Express 5 passes listen errors (e.g. port already in use) to this callback.
+app.listen(PORT, (err?: Error & { code?: string }) => {
+  if (err) {
+    console.error(`PatchPilot could not start on port ${PORT}: ${err.code ?? err.message}. Is another PatchPilot already running? Stop it, or set PATCHPILOT_PORT.`);
+    process.exit(1);
+  }
   console.log(`PatchPilot listening on http://localhost:${PORT}`);
   console.log(`Repos configured: ${Object.keys(config.repos).join(", ") || "(none — add one to patchpilot.config.json)"}`);
 });

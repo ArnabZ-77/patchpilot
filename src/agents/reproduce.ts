@@ -126,7 +126,9 @@ registerMockHandler({
     if (!found) throw new Error("mock mode: no known fixture matched this reproduce prompt");
     const fileMatch = /### Allowed test directories\n([^\n]+)/.exec(prompt);
     const dir = fileMatch?.[1]?.split(",")[0]?.trim() ?? "tests";
-    const testFile = `${dir}/patchpilot.regression.test.js`;
+    // One file per bug, so a merged PatchPilot PR never collides with the next incident's test.
+    const slug = found.fixture.test.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
+    const testFile = `${dir}/patchpilot-${slug}.test.js`;
     const editor = opts.tools?.find((t) => t.name === "editor");
     if (editor) await editor.execute({ path: testFile, new_text: found.fixture.test.body }, {} as any);
     return "```json\n" + JSON.stringify({ test_file: testFile, test_name: found.fixture.test.name, failure_summary: found.fixture.rootCause }) + "\n```";
