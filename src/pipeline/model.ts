@@ -25,6 +25,8 @@ export interface RunAgentResult {
  */
 /** Provider says "busy, try later" (overload, rate limit, quota, or our own stage timeout). Worth waiting and retrying; a code bug is not. */
 const TRANSIENT = /high demand|overloaded|rate.?limit|quota|429|503|unavailable|try again|stage timeout/i;
+/** Account problems that waiting won't fix: used-up quota, billing, bad key. Fail fast with a clear message instead of retrying. */
+const ACCOUNT_PROBLEM = /exceeded your current quota|check your plan and billing|billing|api key not valid|invalid api key|permission denied|unauthorized|401|403/i;
 const MAX_TRANSIENT_RETRIES = 3;
 /** A stage that runs longer than this is aborted and retried — catches requests the provider accepts but never answers. */
 const STAGE_TIMEOUT_MS = Number(process.env.PATCHPILOT_STAGE_TIMEOUT_MS || 240_000);
@@ -68,6 +70,9 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<R
       return { outputText: result.outputText, usage: result.usage, status: result.status };
     }
     lastError = timedOut ? `stage timeout after ${STAGE_TIMEOUT_MS / 1000}s with no finished answer` : (result.error?.message ?? "no output");
+    if (ACCOUNT_PROBLEM.test(lastError)) {
+      throw new Error(`model account problem (not retried): ${lastError}. Check the API key, its quota and billing, or switch PATCHPILOT_PROVIDER/PATCHPILOT_MODEL in .env.`);
+    }
     if (!TRANSIENT.test(lastError)) break;
   }
   throw new Error(`agent run failed: ${lastError}`);

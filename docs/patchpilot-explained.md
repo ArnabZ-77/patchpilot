@@ -693,7 +693,22 @@ model can find and fix the bugs. The time (about 1.6 s) and cost (₹0.54) in mo
 
 ### Real model (Gemini)
 
-REAL_RESULTS_PLACEHOLDER
+**A real model has not yet finished a fix end to end.** Here is exactly what happened in
+each run on 2 Oct, all on bug 01:
+
+| Run | Model | What happened | What it taught us |
+|---|---|---|---|
+| 1 | `gemini-3.8-flash` | Triage was reading the right files (`total.js`, its test, `server.js`) when Google answered **"This model is currently experiencing high demand"**, and the run stopped. | Added retry with backoff, a per-stage timeout and a fallback model (§5.10). Switched the main model to `gemini-3.5-flash`, which was answering in about 1.5 s while `3.8-flash` took 26 s. |
+| 2 | `gemini-3.5-flash` | **Triage:** correct root cause ("computeTotal … attempts to read item.price and item.quantity without checking if the item itself is null"). **Reproducer:** added a test that failed for the right reason (`Got unwanted exception (TypeError: Cannot read properties of null)`). **Fixer:** wrote a **correct** fix (wrap the line in `if (item) { … }`), but PatchPilot wrongly rejected it. | Found a real PatchPilot bug: the Reproducer's uncommitted test edit showed up in the Fixer's diff. Fixed by committing the test first (§5.4). About ₹9 had been spent when the run was stopped. |
+| 3 | `gemini-3.5-flash` | Every request was refused: **"You exceeded your current quota, please check your plan and billing details."** The key's quota was used up by the earlier runs. | Quota and billing errors now fail immediately with a clear message instead of retrying (§5.10). |
+
+What run 2 shows: on a real model, **Triage, Reproducer and Fixer each did their job
+correctly**, and the one failure was a PatchPilot bug, now fixed. What's still missing is
+a full run that ends in a PR, which needs a key with quota.
+
+**To get real numbers:** use a key with available quota (enable billing on the Google AI
+Studio project, wait for the free quota to reset, or use another provider), then run
+`npm run bench -- 01` before trying all 10.
 
 ---
 
