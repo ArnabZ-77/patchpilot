@@ -62,7 +62,7 @@ async function runOne(bug: (typeof BUGS)[number]): Promise<Row> {
   const store = new IncidentStore();
   const ev = await syntheticEvent(bug);
   ev.tags = { ...ev.tags, repo: "demo-app" };
-  const inc = createIncident(ev, "demo-app", repo.root);
+  const inc = createIncident(ev, "demo-app", path.join(repo.root, repo.subdir ?? ""));
   store.insert(inc);
 
   await processIncident(inc, repo, config, store);
@@ -109,8 +109,16 @@ async function main(): Promise<void> {
     console.log(`Running against a real model: ${s.providerId} / ${s.modelId}\n`);
   }
 
+  // Optional filter: `npm run bench -- 01` runs only bugs whose id starts with "01".
+  const only = process.argv[2];
+  const bugs = only ? BUGS.filter((b: { id: string }) => b.id.startsWith(only)) : BUGS;
+  if (!bugs.length) {
+    console.error(`No bug id starts with "${only}".`);
+    process.exit(1);
+  }
+
   const rows: Row[] = [];
-  for (const bug of BUGS) {
+  for (const bug of bugs) {
     process.stdout.write(`Running ${bug.id} (${bug.category})... `);
     try {
       const row = await runOne(bug);

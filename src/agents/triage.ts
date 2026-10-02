@@ -66,6 +66,7 @@ Use read_file and search_codebase to confirm the root cause, then respond with t
     beforeTool,
     onEvent: (e) => {
       if (e.type === "tool-started") onEvent?.("tool", `${e.toolCall.toolName} ${JSON.stringify(e.toolCall.input).slice(0, 160)}`);
+      if (e.type === "status-notice") onEvent?.("notice", e.message);
       if (e.type === "assistant-text-delta") onEvent?.("text-delta", e.text);
     },
   });

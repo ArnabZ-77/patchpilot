@@ -101,6 +101,7 @@ This is attempt ${attemptNumber} of up to ${3}. Fix the source, run run_repro_te
     beforeTool,
     onEvent: (e) => {
       if (e.type === "tool-started") onEvent?.("tool", `${e.toolCall.toolName} ${JSON.stringify(e.toolCall.input).slice(0, 160)}`);
+      if (e.type === "status-notice") onEvent?.("notice", e.message);
     },
   });
 

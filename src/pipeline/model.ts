@@ -23,27 +23,54 @@ export interface RunAgentResult {
  * (PATCHPILOT_MOCK=1) used by the test suite and offline demos so the whole
  * pipeline is exercisable without API credits.
  */
+/** Provider says "busy, try later" (overload, rate limit, quota, or our own stage timeout). Worth waiting and retrying; a code bug is not. */
+const TRANSIENT = /high demand|overloaded|rate.?limit|quota|429|503|unavailable|try again|stage timeout/i;
+const MAX_TRANSIENT_RETRIES = 3;
+/** A stage that runs longer than this is aborted and retried — catches requests the provider accepts but never answers. */
+const STAGE_TIMEOUT_MS = Number(process.env.PATCHPILOT_STAGE_TIMEOUT_MS || 240_000);
+
 export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<RunAgentResult> {
   if (MOCK_MODE) return runMockAgent(prompt, opts);
 
-  const agent = new Agent({
-    providerId: opts.settings.providerId,
-    modelId: opts.settings.modelId,
-    apiKey: opts.settings.apiKey,
-    baseUrl: opts.settings.baseUrl,
-    systemPrompt: opts.systemPrompt,
-    tools: opts.tools,
-    maxIterations: opts.maxIterations ?? 20,
-    hooks: {
-      beforeTool: opts.beforeTool as any,
-      onEvent: opts.onEvent,
-    },
-  });
-  const result = await agent.run(prompt);
-  if (result.status !== "completed") {
-    throw new Error(`agent run ${result.status}: ${result.error?.message ?? "no output"}`);
+  // Retries restart the stage with a fresh agent after a growing wait. If the
+  // primary model stays overloaded, switch to PATCHPILOT_FALLBACK_MODEL (same
+  // provider) for the final attempt — a live demo shouldn't die on a busy model.
+  const fallback = process.env.PATCHPILOT_FALLBACK_MODEL;
+  let lastError = "";
+  for (let attempt = 0; attempt <= MAX_TRANSIENT_RETRIES; attempt++) {
+    const useFallback = !!fallback && attempt === MAX_TRANSIENT_RETRIES;
+    const modelId = useFallback ? fallback! : opts.settings.modelId;
+    if (attempt > 0) {
+      const waitMs = 10_000 * attempt;
+      opts.onEvent?.({ type: "status-notice", message: `Model busy (${lastError.slice(0, 80)}). Retrying in ${waitMs / 1000}s${useFallback ? ` on fallback model ${modelId}` : ""}…` } as AgentRuntimeEvent);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+    const agent = new Agent({
+      providerId: opts.settings.providerId,
+      modelId,
+      apiKey: opts.settings.apiKey,
+      baseUrl: opts.settings.baseUrl,
+      systemPrompt: opts.systemPrompt,
+      tools: opts.tools,
+      maxIterations: opts.maxIterations ?? 20,
+      hooks: {
+        beforeTool: opts.beforeTool as any,
+        onEvent: opts.onEvent,
+      },
+    });
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      agent.abort("stage timeout");
+    }, STAGE_TIMEOUT_MS);
+    const result = await agent.run(prompt).finally(() => clearTimeout(timer));
+    if (result.status === "completed") {
+      return { outputText: result.outputText, usage: result.usage, status: result.status };
+    }
+    lastError = timedOut ? `stage timeout after ${STAGE_TIMEOUT_MS / 1000}s with no finished answer` : (result.error?.message ?? "no output");
+    if (!TRANSIENT.test(lastError)) break;
   }
-  return { outputText: result.outputText, usage: result.usage, status: result.status };
+  throw new Error(`agent run failed: ${lastError}`);
 }
 
 /**

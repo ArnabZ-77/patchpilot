@@ -45,6 +45,11 @@ export async function processIncident(inc: Incident, repo: RepoConfig, config: P
     inc.baseline = baseline;
     store.log(inc, "reproduction-result", `${repro.test_file} fails: ${repro.failure_summary}`, repro);
 
+    // Commit the accepted test on its own. Fixer diffs then contain only Fixer
+    // changes, a failed attempt reverts to "test present, bug unfixed", and the
+    // PR history reads test commit → fix commit.
+    await commitAll(sandbox.dir, `test: reproduce ${inc.id} (fails before fix)`);
+
     let lastFeedback: string | undefined;
     let accepted: Awaited<ReturnType<typeof runFixAttempt>> | undefined;
 

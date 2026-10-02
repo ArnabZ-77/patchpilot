@@ -76,6 +76,7 @@ Write the test, run it with run_test_file, confirm it fails with an assertion (n
     beforeTool,
     onEvent: (e) => {
       if (e.type === "tool-started") onEvent?.("tool", `${e.toolCall.toolName} ${JSON.stringify(e.toolCall.input).slice(0, 160)}`);
+      if (e.type === "status-notice") onEvent?.("notice", e.message);
     },
   });
 

@@ -42,7 +42,7 @@ app.post("/api/incidents", (req, res) => {
     store.log(inc, "occurrence", `New occurrence of an existing incident (now ${inc.occurrences} total).`);
     return res.status(202).json({ incidentId: inc.id, status: "existing", stage: inc.stage });
   }
-  inc = createIncident(ev, repoKey, repo.root);
+  inc = createIncident(ev, repoKey, appDir(repo));
   store.insert(inc);
   res.status(201).json({ incidentId: inc.id, status: "created" });
   runPipeline(inc, repo);
@@ -68,7 +68,7 @@ app.post("/api/incidents/manual", (req, res) => {
     store.persist(inc);
     return res.status(202).json({ incidentId: inc.id, status: "existing", stage: inc.stage });
   }
-  inc = createIncident(ev, repoKey, repo.root);
+  inc = createIncident(ev, repoKey, appDir(repo));
   store.insert(inc);
   res.status(201).json({ incidentId: inc.id, status: "created" });
   runPipeline(inc, repo);
@@ -110,3 +110,8 @@ app.listen(PORT, () => {
   console.log(`PatchPilot listening on http://localhost:${PORT}`);
   console.log(`Repos configured: ${Object.keys(config.repos).join(", ") || "(none — add one to patchpilot.config.json)"}`);
 });
+
+/** The folder the agents work in. Stack-frame paths are made relative to it, and frames outside it (e.g. a test harness) are dropped. */
+function appDir(repo: ReturnType<typeof repoFor>["repo"]): string {
+  return path.join(repo.root, repo.subdir ?? "");
+}

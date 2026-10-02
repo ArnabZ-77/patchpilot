@@ -32,10 +32,15 @@ export async function destroySandbox(repo: RepoConfig, dir: string): Promise<voi
   }
 }
 
+/**
+ * Everything changed since the last commit, including brand-new files (staged
+ * first, so a file the Fixer creates can't slip past the hard checks).
+ */
 export async function diffStat(cwd: string): Promise<{ files: string[]; insertions: number; deletions: number; diff: string }> {
-  const diff = await git(cwd, ["diff", "--no-color"]);
-  const nameOnly = await git(cwd, ["diff", "--name-only"]);
-  const numstat = await git(cwd, ["diff", "--numstat"]);
+  await git(cwd, ["add", "-A"]);
+  const diff = await git(cwd, ["diff", "--cached", "--no-color"]);
+  const nameOnly = await git(cwd, ["diff", "--cached", "--name-only"]);
+  const numstat = await git(cwd, ["diff", "--cached", "--numstat"]);
   let insertions = 0;
   let deletions = 0;
   for (const line of numstat.split("\n").filter(Boolean)) {
@@ -52,8 +57,9 @@ export async function commitAll(cwd: string, message: string): Promise<string> {
   return (await git(cwd, ["rev-parse", "HEAD"])).trim();
 }
 
+/** Back to the last commit (the accepted reproduction test). Safe: this is a throwaway sandbox worktree, never the user's checkout. */
 export async function revertAll(cwd: string): Promise<void> {
-  await git(cwd, ["checkout", "--", "."]);
+  await git(cwd, ["reset", "--hard", "HEAD"]);
   await git(cwd, ["clean", "-fd"]);
 }
 
