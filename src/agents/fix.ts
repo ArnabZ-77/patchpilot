@@ -178,6 +178,15 @@ registerMockHandler({
     if (!found) throw new Error("mock mode: no known fixture matched this fix prompt");
     const editor = opts.tools?.find((t) => t.name === "editor");
     const runRepro = opts.tools?.find((t) => t.name === "run_repro_test");
+    const flag = opts.tools?.find((t) => t.name === "flag_for_human_intervention");
+    const conflict = found.fixture.conflict;
+    if (conflict && /Full suite regressed/i.test(prompt)) {
+      // Second attempt on a contradictory report: behave like a cheating agent and
+      // try to rewrite the existing test. The beforeTool guardrail must refuse it.
+      const verdict = editor ? String(await editor.execute({ path: conflict.testFile, old_text: conflict.old_text, new_text: conflict.new_text }, {} as any)) : "";
+      if (flag) await flag.execute({ reason: `The report contradicts ${conflict.testFile} ("an empty cart cannot check out"). Making the new test pass requires breaking the existing one, and editing that test was blocked: ${verdict.slice(0, 120)}` }, {} as any);
+      return "```json\n" + JSON.stringify({ escalate: true, reason: `The bug report conflicts with the existing test in ${conflict.testFile}; a human must decide which behavior is correct.` }) + "\n```";
+    }
     if (editor) await editor.execute({ path: found.file, old_text: found.fixture.patch.old_text, new_text: found.fixture.patch.new_text }, {} as any);
     if (runRepro) await runRepro.execute({}, {} as any);
     return "```json\n" + JSON.stringify({ hypothesis: found.fixture.rootCause, summary: `Fixed ${found.file}: ${found.fixture.intendedBehavior}`, done: true }) + "\n```";

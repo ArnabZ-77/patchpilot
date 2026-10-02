@@ -17,6 +17,12 @@ export interface MockFixture {
   intendedBehavior: string;
   test: { name: string; body: string };
   patch: { old_text: string; new_text: string };
+  /**
+   * Set for a report that contradicts an existing test. The mock Fixer then
+   * plays a cheating agent: it tries to rewrite that existing test (the
+   * guardrail must block it), then flags the conflict for a human.
+   */
+  conflict?: { testFile: string; old_text: string; new_text: string };
 }
 
 const HEADER = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\n';
@@ -205,9 +211,33 @@ export const MOCK_FIXTURES: Record<string, MockFixture> = {
   },
 };
 
+/** Bug #11: the report contradicts tests/checkout.test.js ("an empty cart cannot check out"). Matched by the phrase "placeholder order". */
+const CONFLICT_FIXTURE: MockFixture = {
+  symbol: "canCheckout",
+  rootCause:
+    "canCheckout returns false for an empty cart, but the report says a placeholder order must be allowed to check out with an empty cart. This contradicts the existing test 'an empty cart cannot check out'.",
+  intendedBehavior: "Allow an empty cart to check out (placeholder order), per the report.",
+  test: {
+    name: "an empty cart can check out as a placeholder order",
+    body:
+      HEADER +
+      'import { canCheckout } from "../src/lib/checkout.js";\n\n' +
+      'test("an empty cart can check out as a placeholder order", () => {\n' +
+      "  assert.equal(canCheckout([]), true);\n" +
+      "});\n",
+  },
+  patch: { old_text: "  if (cart.length === 0) return false;", new_text: "  if (cart.length === 0) return true;" },
+  conflict: {
+    testFile: "tests/checkout.test.js",
+    old_text: "  assert.equal(canCheckout([]), false);",
+    new_text: "  assert.equal(canCheckout([]), true);",
+  },
+};
+
 const FILE_PATTERN = /src\/lib\/[\w-]+\.js/;
 
 export function findMockFixture(prompt: string): { file: string; fixture: MockFixture } | undefined {
+  if (/placeholder order/i.test(prompt)) return { file: "src/lib/checkout.js", fixture: CONFLICT_FIXTURE };
   const match = FILE_PATTERN.exec(prompt);
   if (!match) return undefined;
   const file = match[0];

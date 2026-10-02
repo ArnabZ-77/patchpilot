@@ -11,13 +11,15 @@
     --yellow: #d29922; --red: #f85149; --purple: #a371f7;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+  #stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+  #stats .stat .v { color: #f0a500; font-size: 22px; }
   header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
   header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
   header .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
   #status { margin-left: auto; font-size: 12px; color: var(--muted); }
   #status.live { color: var(--green); }
-  .layout { display: grid; grid-template-columns: 340px 1fr; height: calc(100vh - 49px); }
+  .layout { display: grid; grid-template-columns: 340px 1fr; flex: 1; min-height: 0; }
   #list { border-right: 1px solid var(--border); overflow-y: auto; }
   .card { padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer; }
   .card:hover { background: var(--panel2); }
@@ -60,6 +62,12 @@
   <span class="tag">production crash → tested PR</span>
   <span id="status">connecting…</span>
 </header>
+<div id="stats">
+  <div class="stat"><div class="k">Median time to PR</div><div class="v" id="s-time">—</div></div>
+  <div class="stat"><div class="k">Auto-fixed</div><div class="v" id="s-fixed">—</div></div>
+  <div class="stat"><div class="k">Blocked actions</div><div class="v" id="s-blocks">—</div></div>
+  <div class="stat"><div class="k">Cost per fix</div><div class="v" id="s-cost">—</div></div>
+</div>
 <div class="layout">
   <div id="list"><div class="empty">No incidents yet.<br/><code>npm run demo:crash</code> to send one.</div></div>
   <div id="detail"><div class="empty">Select an incident.</div></div>
@@ -77,7 +85,29 @@ async function loadAll() {
   if (!selected && list.length) select(list[0].id);
 }
 
+// Headline numbers, recomputed from every incident on each update.
+// "Auto-fixed" = PRs ready out of incidents that have finished (done, needs human, or failed).
+function renderStats() {
+  const all = [...incidents.values()];
+  const finished = all.filter(i => ["done", "needs_human", "failed"].includes(i.stage));
+  const done = all.filter(i => i.stage === "done");
+  const times = done.map(i => i.durationMs).filter(t => typeof t === "number").sort((a, b) => a - b);
+  const median = times.length ? times[Math.floor(times.length / 2)] : null;
+  const blocks = all.reduce((n, i) => n + (i.guardrailBlocks?.length || 0), 0);
+  const fixCost = done.reduce((s, i) => s + (i.usage?.inr || 0), 0);
+  document.getElementById("s-time").textContent = median == null ? "—" : fmtDuration(median);
+  document.getElementById("s-fixed").textContent = finished.length ? `${done.length} / ${finished.length}` : "—";
+  document.getElementById("s-blocks").textContent = String(blocks);
+  document.getElementById("s-cost").textContent = done.length ? `₹${(fixCost / done.length).toFixed(2)}` : "—";
+}
+
+function fmtDuration(ms) {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+
 function renderList() {
+  renderStats();
   const el = document.getElementById("list");
   const sorted = [...incidents.values()].sort((a, b) => (a.lastSeen < b.lastSeen ? 1 : -1));
   if (!sorted.length) { el.innerHTML = '<div class="empty">No incidents yet.</div>'; return; }

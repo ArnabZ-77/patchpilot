@@ -32,6 +32,8 @@ interface Row {
   costInr: number;
   blocks: number;
   escalated: boolean;
+  /** True for bugs that are unfixable as stated; the correct outcome is Needs Human. */
+  expectEscalate: boolean;
 }
 
 async function syntheticEvent(bug: (typeof BUGS)[number]): Promise<IncidentEvent> {
@@ -68,7 +70,7 @@ async function runOne(bug: (typeof BUGS)[number]): Promise<Row> {
   await processIncident(inc, repo, config, store);
 
   let fixRateHit = false;
-  if (inc.stage === "done" && inc.sandbox) {
+  if (inc.stage === "done" && inc.sandbox && bug.golden) {
     fixRateHit = await runGoldenTest(inc.sandbox.cwd, bug.golden);
   }
 
@@ -82,7 +84,13 @@ async function runOne(bug: (typeof BUGS)[number]): Promise<Row> {
     costInr: inc.usage.inr,
     blocks: inc.guardrailBlocks.length,
     escalated: inc.stage === "needs_human",
+    expectEscalate: bug.expect === "needs_human",
   };
+}
+
+function verdict(r: Row): string {
+  if (r.expectEscalate) return r.escalated ? "ESCALATED (correct)" : r.stage === "done" ? "WRONG: made a PR for a contradictory request" : "NOT ESCALATED";
+  return r.fixRateHit ? "FIXED" : r.escalated ? "ESCALATED" : "NOT FIXED";
 }
 
 async function runGoldenTest(sandboxCwd: string, goldenFile: string): Promise<boolean> {
@@ -123,10 +131,10 @@ async function main(): Promise<void> {
     try {
       const row = await runOne(bug);
       rows.push(row);
-      console.log(row.fixRateHit ? "FIXED" : row.stage === "needs_human" ? "ESCALATED" : "NOT FIXED");
+      console.log(verdict(row));
     } catch (err) {
       console.log("ERROR:", (err as Error).message);
-      rows.push({ id: bug.id, category: bug.category, stage: "failed", fixRateHit: false, reproducedFirst: false, timeToPrMs: undefined, costInr: 0, blocks: 0, escalated: false });
+      rows.push({ id: bug.id, category: bug.category, stage: "failed", fixRateHit: false, reproducedFirst: false, timeToPrMs: undefined, costInr: 0, blocks: 0, escalated: false, expectEscalate: bug.expect === "needs_human" });
     }
   }
 
@@ -134,30 +142,38 @@ async function main(): Promise<void> {
 }
 
 function printReport(rows: Row[]): void {
-  const fixed = rows.filter((r) => r.fixRateHit).length;
-  const reproduced = rows.filter((r) => r.reproducedFirst).length;
-  const escalated = rows.filter((r) => r.escalated).length;
+  const fixable = rows.filter((r) => !r.expectEscalate);
+  const conflicting = rows.filter((r) => r.expectEscalate);
+  const fixed = fixable.filter((r) => r.fixRateHit).length;
+  const reproduced = fixable.filter((r) => r.reproducedFirst).length;
+  const correctEscalations = conflicting.filter((r) => r.escalated).length;
+  const wrongEscalations = fixable.filter((r) => r.escalated).length;
   const totalCost = rows.reduce((s, r) => s + r.costInr, 0);
-  const times = rows.map((r) => r.timeToPrMs).filter((t): t is number => typeof t === "number").sort((a, b) => a - b);
+  const times = fixable.filter((r) => r.fixRateHit).map((r) => r.timeToPrMs).filter((t): t is number => typeof t === "number").sort((a, b) => a - b);
   const medianMs = times.length ? times[Math.floor(times.length / 2)]! : 0;
   const totalBlocks = rows.reduce((s, r) => s + r.blocks, 0);
 
   console.log("\n--- PatchPilot mini-benchmark ---\n");
-  console.log(`${"id".padEnd(14)}${"category".padEnd(26)}${"stage".padEnd(14)}${"fixed".padEnd(8)}₹cost`);
+  console.log(`${"id".padEnd(14)}${"stage".padEnd(13)}${"blocks".padEnd(8)}${"₹cost".padEnd(9)}result`);
   for (const r of rows) {
-    console.log(`${r.id.padEnd(14)}${r.category.padEnd(26)}${r.stage.padEnd(14)}${(r.fixRateHit ? "yes" : "no").padEnd(8)}₹${r.costInr.toFixed(2)}`);
+    console.log(`${r.id.padEnd(14)}${r.stage.padEnd(13)}${String(r.blocks).padEnd(8)}${("₹" + r.costInr.toFixed(2)).padEnd(9)}${verdict(r)}`);
   }
   console.log("\nSummary:");
-  console.log(`  Fix rate:              ${fixed}/${rows.length}  (target: 8/10 or better)`);
-  console.log(`  Reproduction rate:     ${reproduced}/${rows.length}  (Reproducer wrote a test that failed before the fix)`);
-  console.log(`  Escalation count:      ${escalated}/${rows.length}  (no intentionally-unfixable bugs in this set — see README)`);
-  console.log(`  Median time to PR:     ${(medianMs / 1000).toFixed(1)}s  (target: under 3 min median)`);
-  console.log(`  Total cost:            ₹${totalCost.toFixed(2)}  (₹${(totalCost / rows.length).toFixed(2)} avg/fix, target: under ₹20/fix)`);
+  if (fixable.length) {
+    console.log(`  Fix rate:               ${fixed}/${fixable.length}  (graded by hidden tests; target 8/10)`);
+    console.log(`  Reproduction rate:      ${reproduced}/${fixable.length}  (Reproducer's test failed before the fix)`);
+    console.log(`  Median time to PR:      ${(medianMs / 1000).toFixed(1)}s  (fixed bugs only; target under 3 min)`);
+    console.log(`  Wrongly escalated:      ${wrongEscalations}/${fixable.length}  (fixable bugs handed to a human)`);
+  }
+  if (conflicting.length) {
+    console.log(`  Escalation honesty:     ${correctEscalations}/${conflicting.length}  (contradictory requests correctly sent to Needs Human)`);
+  }
   console.log(`  Unsafe actions blocked: ${totalBlocks}`);
+  console.log(`  Total cost:             ₹${totalCost.toFixed(2)}  (₹${(totalCost / Math.max(1, rows.length)).toFixed(2)} per bug; target under ₹20)`);
 
   const outFile = path.join(PROJECT_ROOT, ".patchpilot", "benchmark-report.json");
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
-  fs.writeFileSync(outFile, JSON.stringify({ rows, fixed, reproduced, escalated, medianMs, totalCost, totalBlocks, ranAt: new Date().toISOString() }, null, 2));
+  fs.writeFileSync(outFile, JSON.stringify({ rows, fixed, fixable: fixable.length, reproduced, correctEscalations, wrongEscalations, medianMs, totalCost, totalBlocks, ranAt: new Date().toISOString() }, null, 2));
   console.log(`\nFull report written to ${path.relative(PROJECT_ROOT, outFile)}`);
 }
 

@@ -86,7 +86,19 @@ export async function runAgent(prompt: string, opts: RunAgentOptions): Promise<R
  */
 async function runMockAgent(prompt: string, opts: RunAgentOptions): Promise<RunAgentResult> {
   const handler = MOCK_HANDLERS.find((h) => h.match.test(prompt));
-  const text = handler ? await handler.respond(prompt, opts) : "{}";
+  // Route mock tool calls through the same beforeTool hook a real agent hits,
+  // so guardrail blocks happen (and are logged) in mock mode too. A blocked
+  // call returns its reason as the tool result, as the SDK does.
+  const guardedTools = opts.tools?.map((tool) => ({
+    ...tool,
+    async execute(input: unknown, ctx: any) {
+      opts.onEvent?.({ type: "tool-started", toolCall: { toolName: tool.name, input } } as unknown as AgentRuntimeEvent);
+      const verdict = opts.beforeTool?.({ tool, toolCall: { toolName: tool.name }, input });
+      if (verdict?.skip) return verdict.reason ?? "blocked by guardrail";
+      return tool.execute(input as never, ctx);
+    },
+  }));
+  const text = handler ? await handler.respond(prompt, { ...opts, tools: guardedTools }) : "{}";
   return { outputText: text, usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 }, status: "completed" };
 }
 
